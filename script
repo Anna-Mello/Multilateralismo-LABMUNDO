@@ -1,0 +1,87 @@
+
+#Análise de conteúdo de lideranças político-discursivas do Sul Geopolítico
+
+# O. Foram realizadas coletas separadas sobre cada um dos perfis selecionados. Cada coleta gerou uma base de dados para cada líder de interesse. O script abaixo foi aplicado a cada uma das bases de dados geradas, para evitar prejuízo à análise qualitativa do tipo de comunicação de cada perfil. Onde se lê "leader", "leader_short", "leader_filtrado", etc., compreende-se uma adaptação geral do códico aplicado de modo idêntico a cada perfil, cujo nome substitui a palavra "leader" em cada análise.     
+# Coleta e filtragem
+# 1. Limpeza as bases de dados coletadas, mantendo o número de observações, mas reduzindo colunas aos metadados necessários para a pesquisa.
+# 2. Delimitação dos termos de busca (podemos adicionar e rodar novamente se necessário na revisão)
+# 3. Filtragem e contagem das observações contendo os termos de busca e criação de um dataset ainda mais reduzido, somente com estas observações e seus metadados. 
+
+leader <- read.csv("/Users/annamello/rstudio/leader2025_26.csv")
+
+leader_short <- leader[, c(
+  "caption",
+  "commentsCount",
+  "likesCount",
+  "timestamp",
+  "type",
+  "url"
+)]
+
+
+busca_en <- "\\bUN\\b|\\bWTO\\b|\\bIMF\\b|World Bank|\\bIBRD\\b|\\bOAS\\b|\\bCPLP\\b|\\bMERCOSUR\\b|\\bUNASUR\\b|\\bBRICS\\b|\\bG20\\b|\\bOECD\\b|\\bECLAC\\b|\\bILO\\b|\\bWHO\\b|multilateralism|multilateral cooperation|multilateral forums|multilateral institutions|global order|multilateral system|global governance|international cooperation|multilateral organization|multilateral agreement|global agenda|globalism|trump|china|Security Council|united nations|communism"
+
+leader_filtrado <- leader_short[grepl(busca, leader_short$caption, ignore.case = TRUE), ]
+
+leader_filtrado
+
+
+termos <- strsplit(busca_en, "\\|")[[1]]
+termos <- gsub("\\\\b", "", termos)  # remove os \b que sobraram
+
+padroes <- ifelse(nchar(termos) <= 5, paste0("\\b", termos, "\\b"), termos)
+
+contagem <- sapply(padroes, function(p) sum(grepl(p, leader_filtrado$caption, ignore.case = TRUE)))
+data.frame(termo = termos, n_posts = contagem)[order(-contagem), ]
+
+# 20 postagens mais engajadoras da base geral (reduzida em colunas relevantes "_short")
+leader_short %>%
+  mutate(engagement = commentsCount * 1 + likesCount * 0.5) %>%
+  arrange(desc(engagement)) %>%
+  slice_head(n = 20) %>%
+  select(caption, likesCount, commentsCount, engagement, url)
+
+# 20 postagens mais engajadoras no âmbito semântico do multilateralismo
+leader_filtrado %>%
+  mutate(engagement = commentsCount * 1 + likesCount * 0.5) %>%
+  arrange(desc(engagement)) %>%
+  slice_head(n = 20) %>%
+  select(caption, likesCount, commentsCount, engagement, url)
+
+
+#menções a países: contagem de termos na base geral
+library(stringr)
+
+paises <- countrycode::codelist$country.name.en
+
+contagem_paises <- data.frame(
+  pais = paises,
+  n_mencoes = sapply(paises, function(p) {
+    sum(str_count(leader_short$caption, regex(paste0("\\b", p, "\\b"), ignore_case = TRUE)), na.rm = TRUE)
+  })
+)
+
+contagem_paises %>% filter(n_mencoes > 0) %>% arrange(desc(n_mencoes))
+
+# menções a países: filtragem de postagens extraídas da base geral com menções a países
+library(countrycode)
+library(stringr)
+
+paises_en <- countrycode::codelist$country.name.en
+
+regex_paises <- paste0("\\b(", paste(paises_en, collapse = "|"), ")\\b")
+
+leader_outros_paises <- roets_short %>%
+  filter(str_detect(caption, regex(regex_paises, ignore_case = TRUE)))
+
+leader_outros_paises
+
+
+#contagem palavras mais frequentes na base geral:
+library(tidytext)
+library(dplyr)
+
+leader_short %>%
+  unnest_tokens(word, caption) %>%
+  anti_join(stop_words, by = "word") %>%
+  count(word, sort = TRUE)
